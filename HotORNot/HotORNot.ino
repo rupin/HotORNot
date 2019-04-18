@@ -22,8 +22,8 @@ uint8_t currentTemperature = 0;
 int temperatureDifference = 0;
 uint8_t lightState = HIGH;
 boolean temperatureDirection = false;
-// Variables for the Sleep/power down modes:
-volatile boolean f_wdt = 1;
+
+
 OneWire TemperatureSensor(ONEWIRE_BUSS);
 
 #define RX PB5
@@ -59,6 +59,7 @@ void loop(void)
 {
 
   ADCSRA &= ~(1<<ADEN); //Disable ADC, saves ~230uA
+  TemperatureSensor.reset(); // reset one wire, puts the bus low, and the sensor in Low Power mode.
   setup_watchdog(6); //Setup watchdog to go off after 1sec
   sleep_mode(); //Go to sleep! Wake up 1sec later and check water
   if (watchdog_counter > 1)
@@ -69,6 +70,7 @@ void loop(void)
     TemperatureSensor.reset(); // reset one wire buss
     TemperatureSensor.skip(); // select only device
     TemperatureSensor.write(0x44); // start conversion
+    TemperatureSensor.setResolution()
     //delay(1000); // wait for the conversion
     TemperatureSensor.reset();
     TemperatureSensor.skip();
