@@ -9,11 +9,9 @@
 #include <avr/wdt.h> //Needed to enable/disable watch dog timer
 #include <Adafruit_NeoPixel.h>
 
-// Which pin on the Arduino is connected to the NeoPixels?
-#define PIN        PB1 // On Trinket or Gemma, suggest changing this to 1
 
 // How many NeoPixels are attached to the Arduino?
-#define NUMPIXELS 2 // Popular NeoPixel ring size
+
 
 // When setting up the NeoPixel library, we tell it how many pixels,
 // and which pin to use to send signals. Note that for older NeoPixel
@@ -27,12 +25,15 @@
 #define UNSAFE_HIGH_TEMPERATURE 60
 #define SAFE_HIGH_TEMPERATURE 55
 #define SHUTDOWN_TEMPERATURE 40
-#define ONEWIRE_BUSS PB0
+#define TEMPERATURE_SENSOR PB0
+
 #define WS2812LED PB1
+#define NUMPIXELS 2
+
 #define DESCENDING true
 #define ASCENDING false
 
-#define MOSFET_SWITCH PB2
+#define MOSFET_GATE PB4
 
 #define SLEEPAFTER 10000
 
@@ -44,10 +45,10 @@ boolean crossedHighThreshold = false;
 
 uint8_t watchdogCounter = 0;
 
-OneWire TemperatureSensor(ONEWIRE_BUSS);
+OneWire TemperatureSensor(TEMPERATURE_SENSOR);
 
-#define RX PB3
-#define TX PB4
+
+#define TX PB3
 SendOnlySoftwareSerial mySerial (TX);  // Tx pin
 
 
@@ -56,6 +57,7 @@ SendOnlySoftwareSerial mySerial (TX);  // Tx pin
 boolean canSleepAgain = true;
 void setup(void) {
   ADCSRA &= ~(1 << ADEN); //Disable ADC, saves ~230uA
+  initPeripherals();
   pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
   mySerial.begin(9600);
   //Power down various bits of hardware to lower power usage
@@ -70,6 +72,7 @@ void setup(void) {
   pixels.setPixelColor(1, pixels.Color(0, 0, 0));
 
   pixels.show();   // Send the updated pixel colors to the hardware.
+
 
 
 }
@@ -89,11 +92,16 @@ void loop(void)
 
   if (justWokeUp)
   {
-    // User should expect a Purple Color Pulse, if it is Red, the power has gone below the threshold of the BLUE LED and the device needs charging
-    pixels.setPixelColor(1, pixels.Color(255, 0, 0));
+    
+    initPeripherals();
+    
+   // User should expect a Purple Color Pulse, if it is Red, the power has gone below the threshold of the BLUE LED and the device needs charging
+    pixels.setPixelColor(0, pixels.Color(64, 0, 64));
+    pixels.setPixelColor(1, pixels.Color(64, 0, 64));
     pixels.show();
     delay(250);
 
+    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
     pixels.setPixelColor(1, pixels.Color(0, 0, 0));
     pixels.show();
 
@@ -177,7 +185,6 @@ void loop(void)
 
     pixels.setPixelColor(1, pixels.Color(0, 0, 150));
     pixels.show();   // Send the updated pixel colors to the hardware.
-
     canSleepAgain = false;
   }
 
@@ -206,15 +213,10 @@ void loop(void)
     setup_watchdog(7); //Setup watchdog to go off after 2sec
     sleep_mode(); //Go to sleep by Watchdog! Wake up 1sec later
   }
-  setPeripheralState(PERIPHERALS_ON); //Turn on the Peripherals
-  init_peripherals();// Initialise Peripherals that have shut down
+  
+  
 
-  /*pixels.setPixelColor(1, pixels.Color(180, 125, 10));
-    pixels.show();   // Send the updated pixel colors to the hardware.
-    delay(100);
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.show();   // Send the updated pixel colors to the hardware.
-  */
+  
 
 }
 
@@ -274,7 +276,7 @@ uint8_t getTemperature()
   t =  (uint8_t)(raw >> 4);
 
   // disable the Temperature Sensor
-  pinMode(ONEWIRE_BUSS, INPUT);//This will Float the Sensor pin, essentially pulling it up. The sensor goes into low power mode.
+  pinMode(TEMPERATURE_SENSOR, INPUT);//This will Float the Sensor pin, essentially pulling it up. The sensor goes into low power mode.
   return t;
 
 }
@@ -310,12 +312,23 @@ void disableWDT()
 
 void setPeripheralState(boolean state)
 {
-  //pinMode(MOSFET_SWITCH, state);
+
+  pinMode(MOSFET_GATE, state);
 }
 
-void init_peripherals()
+void initPeripherals()
 {
-  // pixels.begin();
+  pinMode(MOSFET_GATE, OUTPUT);
+  digitalWrite(MOSFET_GATE, HIGH);
+  pixels.begin();
+}
+void disablePeripherals()
+{
+  pixels.clear();
+  digitalWrite(MOSFET_GATE, LOW);
+  pinMode(MOSFET_GATE, INPUT);
+
+
 }
 
 void putToDeepSleep(boolean sleepFlag)
@@ -327,8 +340,8 @@ void putToDeepSleep(boolean sleepFlag)
     canSleepAgain = false;
 
     disableWDT();
-    setPeripheralState(PERIPHERALS_OFF);// turn off All Peripherals
-    sleep();
+    disablePeripherals();// turn off All Peripherals
+    sleep();// Device Goes to sleep here, and when woken up, executes from here
     justWokeUp = true;
     watchdogCounter = 0;
 

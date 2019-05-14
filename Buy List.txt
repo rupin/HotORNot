@@ -1,0 +1,4 @@
+Joystick Module
+Larger Double Sided PCB
+Multi Strand Thin wire
+47uF 0805 Caps
