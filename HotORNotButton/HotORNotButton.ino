@@ -37,7 +37,16 @@
 
 #define SLEEPAFTER 10000
 
+
 Adafruit_NeoPixel pixels(NUMPIXELS, WS2812LED, NEO_GRB + NEO_KHZ800);
+
+
+#define PURPLE pixels.Color(30, 0, 30)
+#define GREEN pixels.Color(0, 30, 0)
+#define RED pixels.Color(30, 0, 0)
+#define BLUE pixels.Color(0, 0, 30)
+#define YELLOW pixels.Color(30, 30, 0)
+#define NO_COLOR pixels.Color(0, 0, 0)
 
 uint8_t currentTemperature = 0;
 uint8_t lightState = HIGH;
@@ -58,20 +67,14 @@ boolean canSleepAgain = true;
 void setup(void) {
   ADCSRA &= ~(1 << ADEN); //Disable ADC, saves ~230uA
   initPeripherals();
-  pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
+
   mySerial.begin(9600);
   //Power down various bits of hardware to lower power usage
   set_sleep_mode(SLEEP_MODE_PWR_DOWN); //Power down everything, wake up from WDT
   sleep_enable();
-
-  pixels.setPixelColor(1, pixels.Color(0, 255, 255));
-
-  pixels.show();   // Send the updated pixel colors to the hardware.
+  setTemperatureIndicationColor(GREEN);
   delay(1000);
-
-  pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-
-  pixels.show();   // Send the updated pixel colors to the hardware.
+  setTemperatureIndicationColor(NO_COLOR);
 
 
 
@@ -92,18 +95,13 @@ void loop(void)
 
   if (justWokeUp)
   {
-    
-    initPeripherals();
-    
-   // User should expect a Purple Color Pulse, if it is Red, the power has gone below the threshold of the BLUE LED and the device needs charging
-    pixels.setPixelColor(0, pixels.Color(64, 0, 64));
-    pixels.setPixelColor(1, pixels.Color(64, 0, 64));
-    pixels.show();
-    delay(250);
 
-    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.show();
+    initPeripherals();
+
+    // User should expect a Purple Color Pulse, if it is Red, the power has gone below the threshold of the BLUE LED and the device needs charging
+    setTemperatureIndicationColor(PURPLE);
+    delay(250);
+    setTemperatureIndicationColor(NO_COLOR);
 
     justWokeUp = false;
     wokeUpByError = false;
@@ -126,7 +124,7 @@ void loop(void)
 
 
   //It is possible that the wakeup may be inadvertant, so we should check if the temperature is increasing since wakeup
-  if (watchdogCounter > 3 && (wokeUpByError == false) && (currentTemperature < SHUTDOWN_TEMPERATURE) ) // This will happen when Watchdog timer comes back after 8 seconds
+  if (watchdogCounter > 3 && (wokeUpByError == false) /*&& (currentTemperature < SHUTDOWN_TEMPERATURE) */) // This will happen when Watchdog timer comes back after 8 seconds
   {
 
     int temperatureDifference = abs(currentTemperature - measuredTemperatureAtWakeUp); // Is there a difference in temperature since wakeup
@@ -158,12 +156,9 @@ void loop(void)
   {
     canSleepAgain = true;
     justWokeUp = false;
-    pixels.setPixelColor(1, pixels.Color(10, 150, 0));
-    pixels.show();
-    delay(100);
-
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.show();
+    setTemperatureIndicationColor(GREEN);
+    delay(250);
+    setTemperatureIndicationColor(NO_COLOR);
     return;
   }
 
@@ -173,25 +168,21 @@ void loop(void)
 
   if (currentTemperature > UNSAFE_HIGH_TEMPERATURE)
   {
+    setTemperatureIndicationColor(RED);
 
-    pixels.setPixelColor(1, pixels.Color(150, 0, 0));
-    pixels.show();   // Send the updated pixel colors to the hardware.
     canSleepAgain = false;
     crossedHighThreshold = true;
   }
 
   else if (currentTemperature <= UNSAFE_HIGH_TEMPERATURE && currentTemperature > SAFE_HIGH_TEMPERATURE &&  crossedHighThreshold)
   {
-
-    pixels.setPixelColor(1, pixels.Color(0, 0, 150));
-    pixels.show();   // Send the updated pixel colors to the hardware.
+    setTemperatureIndicationColor(YELLOW);
     canSleepAgain = false;
   }
 
   else if (currentTemperature <= SAFE_HIGH_TEMPERATURE && currentTemperature > SHUTDOWN_TEMPERATURE && crossedHighThreshold)
   {
-    pixels.setPixelColor(1, pixels.Color(0, 150, 0));
-    pixels.show();   // Send the updated pixel colors to the hardware.
+    setTemperatureIndicationColor(GREEN);
     canSleepAgain = false;
   }
   else if (currentTemperature <= SHUTDOWN_TEMPERATURE && crossedHighThreshold)
@@ -201,23 +192,29 @@ void loop(void)
   }
   delay(125);// Keep the state of the LED Output for this long
 
-  pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-  pixels.show();
+  setTemperatureIndicationColor(NO_COLOR);
 
 
-  setPeripheralState(PERIPHERALS_OFF);// Enable the mosfet to switch off All Devices including LEDS and Sensors. This also turns off the LED
-  putToDeepSleep(canSleepAgain);
+  //setPeripheralState(PERIPHERALS_OFF);// Enable the mosfet to switch off All Devices including LEDS and Sensors. This also turns off the LED
+  //putToDeepSleep(canSleepAgain);
 
   if (canSleepAgain == false) //If Deep sleep is not enabled, then enable WDT Sleep
   {
     setup_watchdog(7); //Setup watchdog to go off after 2sec
     sleep_mode(); //Go to sleep by Watchdog! Wake up 1sec later
   }
-  
-  
 
-  
 
+
+
+
+}
+
+void setTemperatureIndicationColor(uint32_t pixelColor)
+{
+  pixels.setPixelColor(0, pixelColor);
+  pixels.setPixelColor(1, pixelColor);
+  pixels.show();
 }
 
 void sleep() {
@@ -226,7 +223,7 @@ void sleep() {
   PCMSK |= _BV(PCINT2);                   // Use PB2 as interrupt pin
   ADCSRA &= ~_BV(ADEN);                   // ADC off
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // replaces above statement
-
+  disablePeripherals();
   sleep_enable();                         // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
   sei();                                  // Enable interrupts
   sleep_cpu();                            // sleep
@@ -235,6 +232,7 @@ void sleep() {
   PCMSK &= ~_BV(PCINT2);                  // Turn off PB2 as interrupt pin
   sleep_disable();                        // Clear SE bit
   sei();                                  // Enable interrupts
+  initPeripherals();
 
 
 
@@ -248,6 +246,7 @@ ISR(PCINT0_vect) {
 ISR(WDT_vect) {
   //mySerial.println("Waking from WDT Sleep");
   watchdogCounter++;
+
 
 }
 
@@ -344,6 +343,7 @@ void putToDeepSleep(boolean sleepFlag)
     sleep();// Device Goes to sleep here, and when woken up, executes from here
     justWokeUp = true;
     watchdogCounter = 0;
+    initPeripherals();
 
   }
 
